@@ -1,0 +1,563 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>理棼——中文老師的檔案分類專家</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.17/mammoth.browser.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --secondary-color: #f0f4f8;
+            --text-color: #333;
+        }
+
+        body, html {
+    margin: 0;
+    padding: 0;
+            font-family: 'Noto Serif TC', 'cwTeXHei', 'cwTeXFangSong', 'cwTeXKai', 'cwTeXMing', 'PingFang TC', 'Microsoft JhengHei', serif;
+            background-image: url('https://i.ibb.co/6RMzHw4J/image.png');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: var(--text-color);
+            min-height: 100vh;
+        }
+
+        .container {
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .hero-body {
+            padding: 3rem 1.5rem !important;
+            background: linear-gradient(45deg, rgba(54, 69, 79, 0.9) 0%, rgba(76, 88, 96, 0.9) 100%);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .title {
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+font-family: font-family: 'Noto Serif TC', 'cwTeXHei', 'cwTeXFangSong', 'cwTeXKai', 'cwTeXMing', 'PingFang TC', 'Microsoft JhengHei', serif;
+        }
+
+        .notification {
+            background-color: rgba(50, 115, 220, 0.8);
+            color: white;
+            border-radius: 10px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .drop-zone {
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 3rem;
+            background: rgba(245, 245, 245, 0.2);
+            backdrop-filter: blur(12px);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .drop-zone:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+            border-color: rgba(255,255,255,0.3);
+        }
+
+        .drop-zone.dragover {
+            background: rgba(255,255,255,0.1);
+            border-color: var(--secondary-color);
+        }
+
+        .table {
+            background-color: transparent;
+            table-layout: fixed;
+            width: 100%;
+        }
+
+        .table th, .table td {
+            color: var(--text-color);
+            word-wrap: break-word;
+        }
+
+        .table tr:hover td {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+
+        .button.is-link {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .tag.is-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .progress-container {
+            background: rgba(0,0,0,0.2);
+            border-radius: 999px;
+            height: 24px;
+            overflow: hidden;
+            position: relative;
+            backdrop-filter: blur(4px);
+        }
+
+        .progress {
+            height: 100%;
+            background: linear-gradient(90deg, #6B8BA4 0%, #8AA8BF 100%);
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .progress-text {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-weight: bold;
+            line-height: 24px;
+        }
+
+        .download-btn-container {
+            margin-top: 1rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <section class="hero">
+        <div class="hero-body has-text-centered">
+            <h1 class="title is-1 floating-title" style="color: var(--secondary-color);">📁 理棼</h1>
+        </div>
+    </section>
+
+    <div class="container">
+        <div class="drop-zone" id="dropZone">
+            <div class="drop-zone-content">
+                <i class="fas fa-cloud-upload-alt fa-3x"></i>
+                <p class="mt-3">拖放文件至此 或 點擊選擇文件</p>
+            </div>
+            <input type="file" id="fileInput" multiple style="display: none;">
+        </div>
+
+        <div class="notification has-text-centered" style="background-color: rgba(51, 51, 51, 0.8); color: white;">
+            <p>所有文件均在您的瀏覽器處理，不會被上傳到任何伺服器，以確保您的隱私安全。</p>
+        </div>
+
+        <div class="progress-container mt-5">
+            <div class="progress" id="progressBar" style="width: 0%;"></div>
+            <p class="progress-text" id="progressText">0%</p>
+        </div>
+
+        <div class="download-btn-container">
+            <button class="button is-link is-rounded is-medium" id="downloadBtn" style="display: none;">
+                <span class="icon">
+                    <i class="fas fa-file-archive"></i>
+                </span>
+                <span>下載整理結果（ZIP壓縮檔）</span>
+            </button>
+            <button class="button is-danger is-rounded is-medium" id="clearBtn" title="清空分類日誌">
+                <span class="icon">
+                    <i class="fas fa-trash-alt"></i>
+                </span>
+            </button>
+        </div>
+
+        <div class="classification-table mt-6">
+            <table class="table is-fullwidth">
+                <thead>
+                    <tr>
+                        <th>檔案名稱</th>
+                        <th>檔案類型</th>
+                        <th>分類結果</th>
+                        <th>分類依據</th>
+                    </tr>
+                </thead>
+                <tbody id="resultTable">
+                    <tr><td colspan="4" class="has-text-centered">尚未處理任何文件</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+
+        function filledCell(cell) {
+            return cell !== '' && cell != null;
+        }
+
+        function loadFileData(filename) {
+            if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+                try {
+                    var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                    var firstSheetName = workbook.SheetNames[0];
+                    var worksheet = workbook.Sheets[firstSheetName];
+                    var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                    var filteredData = jsonData.filter(row => row.some(filledCell));
+                    var headerRowIndex = filteredData.findIndex((row, index) =>
+                        row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                    );
+                    if (headerRowIndex === -1 || headerRowIndex > 25) {
+                        headerRowIndex = 0;
+                    }
+                    var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
+                    csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                    return csv;
+                } catch (e) {
+                    console.error(e);
+                    return "";
+                }
+            }
+            return gk_fileData[filename] || "";
+        }
+
+        const categories = {
+            doc: ['閱讀', '寫作', '考試、測驗及默書', '文件及其他'],
+            media: ['PPT', '試算表', '多媒體']
+        };
+
+        const keywordMap = {
+            '考試、測驗及默書': ['測驗', '默書', '考試', '測試', '評估', '考核', '試卷', '試題'],
+            '寫作': ['寫作', '實用文', '立意', '抄詞', '造句', '創作', '構思', '表達', '組織', '發揮', 
+                     '實用寫作', '命題寫作', '創作', '構思', '表達', '組織', '發揮', '閱讀材料', '寫作任務', 
+                     '字數上限', '長文', '短文', '情境', '立意', '取材', '詳略', '情節', '起', '承', '轉', 
+                     '合', '過渡', '文筆', '語句', '詞匯'],
+            '閱讀': ['課外篇章', '範文', '文言文', '閱讀能力', '理解', '分析', '感受', '鑑賞', '運用策略', 
+                     '甲部', '乙部', '文言經典', '文白兼備', '問答', '選擇', '填表', '填充', '文章', '段落', 
+                     '主旨', '中心思想', '修辭', '語感', '文意', '推論', '判斷', '語境', '詞彙', '句式', 
+                     '篇章結構', '背景知識', '文化', '歷史', '詩詞', '散文', '小說', '劇本', '說明文', 
+                     '議論文', '抒情文', '象徵', '意象', '情感', '態度', '觀點', '對比', '描寫', '細節', 
+                     '結構', '起承轉合', '開頭', '結尾', '過渡', '鋪墊', '高潮', '結局', '人物', '環境', 
+                     '心理', '社會', '哲理', '反思', '啟發', '聯想', '延伸', '閱讀理解', '文本', '解讀', 
+                     '闡釋', '探究', '批判', '比較', '異同', '脈絡', '語意', '語法', '修辭手法', '文學', 
+                     '寫實', '浪漫', '現代', '古典', '名著', '選文', '篇目', '題材', '風格', '語言', 
+                     '表達方式', '信息', '提取', '整理', '歸納', '總結', '概括', '評價', '賞析', '感悟',
+                     '諸葛亮《出師表》', '范仲淹《岳陽樓記》', '柳宗元《始得西山宴遊記》', '司馬遷《廉頗藺相如列傳》（節錄）', 
+                     '蘇洵《六國論》', '莊子《逍遙遊》', '韓愈《師說》', '《論語》：《論仁、論孝、論君子》', 
+                     '王維《山居秋暝》', '李白《月下獨酌》', '杜甫《登樓》', '蘇軾《念奴嬌．赤壁懷古》', 
+                     '李清照《聲聲慢．秋情》', '辛棄疾《青玉案．元夕》'],
+            '文件及其他': ['表', '紀錄', '報表', '表格', '統計', '數據', '清單', '名單', '通知', '公告', 
+                            '備忘錄', '函件', '公文', '政策', '規定', '指南', '標準', '課程大綱', '會議', '議程', 
+                            '決議', '行動項目', '分析', '趨勢', '註冊', '錄取', '畢業', '目錄', '索引', '指南']
+        };
+
+        const categoryColors = {
+            '閱讀': 'is-primary',
+            '寫作': 'is-success',
+            '考試、測驗及默書': 'is-warning',
+            '文件及其他': 'is-light',
+            'PPT': 'is-link',
+            '試算表': 'is-danger',
+            '多媒體': 'is-dark'
+        };
+
+        const allCategories = ['閱讀', '寫作', '考試、測驗及默書', '文件及其他', 'PPT', '試算表', '多媒體'];
+
+        const mediaExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'mp3', 'wav', 'mp4', 'mov', 'rmvb', 'mpg'];
+
+        let processingQueue = [];
+        let zip = new JSZip();
+
+        async function extractPdfText(file) {
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                let text = '';
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const content = await page.getTextContent();
+                    text += content.items.map(item => item.str).join(' ');
+                }
+                return text;
+            } catch (error) {
+                console.error('PDF text extraction failed:', error);
+                return '';
+            }
+        }
+
+        async function extractDocxText(file) {
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const result = await mammoth.extractRawText({ arrayBuffer });
+                return result.value;
+            } catch (error) {
+                console.error('DOCX text extraction failed:', error);
+                return '';
+            }
+        }
+
+        async function classifyText(text) {
+            try {
+                const response = await fetch('http://localhost:5000/classify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text: text })
+                });
+                const result = await response.json();
+                return result[0].label;
+            } catch (error) {
+                console.error('AI classification failed:', error);
+                return null;
+            }
+        }
+
+        async function advancedCategoryDetection(file) {
+            const ext = file.name.split('.').pop().toLowerCase();
+            const fileName = file.name.toLowerCase();
+            const lowerName = fileName.replace(/[^a-z0-9\u4e00-\u9fa5]/gi, '');
+
+            if (mediaExtensions.includes(ext)) {
+                return { category: '多媒體', basis: '檔案類型' };
+            }
+
+            if (lowerName.includes('測驗')) {
+                return { category: '考試、測驗及默書', basis: '文件名稱' };
+            }
+
+            const hasClassPattern = /\d+[a-zA-Z]+/.test(fileName);
+            const hasBookTitle = /《.*》/.test(fileName);
+            if (hasClassPattern || hasBookTitle) {
+                return { category: '寫作', basis: '文件名稱' };
+            }
+
+            if (['pdf', 'docx'].includes(ext)) {
+                for (const category of ['寫作', '閱讀']) {
+                    if (keywordMap[category].some(kw => lowerName.includes(kw))) {
+                        return { category, basis: '文件名稱' };
+                    }
+                }
+
+                let content = '';
+                if (ext === 'pdf') {
+                    content = await extractPdfText(file);
+                } else if (ext === 'docx') {
+                    content = await extractDocxText(file);
+                }
+                if (content) {
+                    const aiCategory = await classifyText(content);
+                    if (aiCategory && categories.doc.includes(aiCategory)) {
+                        return { category: aiCategory, basis: '文件內容' };
+                    }
+                    const lowerContent = content.toLowerCase();
+                    for (const [category, keywords] of Object.entries(keywordMap)) {
+                        if (keywords.some(kw => lowerContent.includes(kw))) {
+                            return { category, basis: '文件內容' };
+                        }
+                    }
+                }
+            } else if (['ppt', 'pptx'].includes(ext)) {
+                return { category: 'PPT', basis: '檔案類型' };
+            } else if (['xls', 'xlsx', 'csv'].includes(ext)) {
+                return { category: '試算表', basis: '檔案類型' };
+            }
+
+            return { category: '文件及其他', basis: '檔案類型' };
+        }
+
+        async function processFiles(files) {
+            let processedCount = 0;
+            const totalFiles = files.length;
+
+            if (processingQueue.length === 0) {
+                document.getElementById('resultTable').innerHTML = '';
+            }
+
+            for (const file of files) {
+                const { category, basis } = await advancedCategoryDetection(file);
+                const item = { file, category, basis };
+                processingQueue.push(item);
+                const index = processingQueue.length - 1;
+
+                const row = document.createElement('tr');
+                row.dataset.index = index;
+                const categoryClass = categoryColors[category] || 'is-light';
+                const dropdownId = `dropdown-menu-${index}`;
+
+                row.innerHTML = `
+                    <td>${file.name}</td>
+                    <td>${file.type || file.name.split('.').pop().toUpperCase()}</td>
+                    <td>
+                        <div class="dropdown">
+                            <div class="dropdown-trigger">
+                                <span class="tag ${categoryClass}" aria-haspopup="true" aria-controls="${dropdownId}">${category}</span>
+                            </div>
+                            <div class="dropdown-menu" id="${dropdownId}" role="menu">
+                                <div class="dropdown-content">
+                                    ${allCategories.map(cat => `<a href="#" class="dropdown-item" data-category="${cat}">${cat}</a>`).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>${basis}</td>
+                `;
+
+                document.getElementById('resultTable').appendChild(row);
+
+                processedCount++;
+                const progress = Math.round((processedCount / totalFiles) * 100);
+                updateProgress(progress);
+            }
+
+            updateProgress(100);
+            document.getElementById('downloadBtn').style.display = 'block';
+        }
+
+        function updateProgress(percent) {
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            progressBar.style.width = `${percent}%`;
+            progressText.textContent = `${percent}%`;
+        }
+
+        async function createZipPackage() {
+            const downloadBtn = document.getElementById('downloadBtn');
+            downloadBtn.disabled = true;
+            downloadBtn.innerHTML = '<span class="icon"><i class="fas fa-spinner fa-spin"></i></span><span>正在生成 ZIP 檔...</span>';
+
+            updateProgress(0);
+            const zipFolder = zip.folder("整理結果");
+
+            processingQueue.forEach((item, index) => {
+                const categoryFolder = zipFolder.folder(item.category);
+                categoryFolder.file(item.file.name, item.file);
+                const progress = Math.round(((index + 1) / processingQueue.length) * 100);
+                updateProgress(progress);
+            });
+
+            try {
+                const content = await zip.generateAsync({ type: "blob" });
+                saveAs(content, "整理結果.zip");
+            } catch (error) {
+                console.error('ZIP generation failed:', error);
+                alert('生成 ZIP 檔時發生錯誤');
+            } finally {
+                downloadBtn.disabled = false;
+                downloadBtn.innerHTML = '<span class="icon"><i class="fas fa-file-archive"></i></span><span>下載整理結果（ZIP壓縮檔）</span>';
+                updateProgress(0);
+            }
+        }
+
+        document.getElementById('dropZone').addEventListener('click', () => {
+            document.getElementById('fileInput').click();
+        });
+
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            const files = [...e.target.files];
+            processFiles(files);
+        });
+
+        document.getElementById('dropZone').addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.currentTarget.classList.add('dragover');
+        });
+
+        document.getElementById('dropZone').addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.currentTarget.classList.remove('dragover');
+        });
+
+        document.getElementById('dropZone').addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.currentTarget.classList.remove('dragover');
+            const files = [...e.dataTransfer.files];
+            processFiles(files);
+        });
+
+        document.getElementById('downloadBtn').addEventListener('click', createZipPackage);
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            document.getElementById('resultTable').innerHTML = '<tr><td colspan="4" class="has-text-centered">尚未處理任何文件</td></tr>';
+            updateProgress(0);
+            processingQueue = [];
+            zip = new JSZip();
+            document.getElementById('downloadBtn').style.display = 'none';
+        });
+
+        document.addEventListener('click', (e) => {
+            const target = e.target;
+            const dropdownTrigger = target.closest('.dropdown-trigger');
+            if (dropdownTrigger) {
+                const dropdown = dropdownTrigger.closest('.dropdown');
+                dropdown.classList.toggle('is-active');
+            } else if (target.classList.contains('dropdown-item')) {
+                e.preventDefault();
+                const dropdown = target.closest('.dropdown');
+                const row = dropdown.closest('tr');
+                const index = row.dataset.index;
+                const newCategory = target.dataset.category;
+                processingQueue[index].category = newCategory;
+                const tag = dropdown.querySelector('.tag');
+                tag.textContent = newCategory;
+                tag.className = `tag ${categoryColors[newCategory] || 'is-light'}`;
+                dropdown.classList.remove('is-active');
+            } else {
+                document.querySelectorAll('.dropdown.is-active').forEach(dropdown => {
+                    dropdown.classList.remove('is-active');
+                });
+            }
+        });
+    </script>
+</body>
+</html>
